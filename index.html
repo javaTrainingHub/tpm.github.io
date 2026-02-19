@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en" ng-app="tpmsApp">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trainee Performance Manager</title>
+    
+    <!-- Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.8.2/angular.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #34495e;
+            --accent-color: #3498db;
+            --bg-light: #f8f9fa;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 0.9rem;
+        }
+
+        /* Sidebar & Layout */
+        .sidebar {
+            height: 100vh;
+            background-color: white;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 250px;
+            padding-top: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-content {
+            margin-left: 250px;
+            padding: 30px;
+        }
+
+        .nav-link {
+            color: var(--secondary-color);
+            padding: 12px 20px;
+            font-weight: 500;
+            transition: 0.3s;
+            border-radius: 0 25px 25px 0;
+            margin-right: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background-color: var(--accent-color);
+            color: white;
+        }
+
+        .nav-link i { margin-right: 10px; width: 20px; text-align: center; }
+
+        .save-section {
+            background: #e8f4fd;
+            border-top: 1px solid #d1e8fa;
+            padding: 15px;
+            margin-top: auto;
+        }
+
+        .batch-section {
+            padding: 0 15px 15px 15px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        
+        .stat-card { background: linear-gradient(135deg, #3498db, #2980b9); color: white; }
+        .stat-card h3 { font-size: 2rem; font-weight: 700; margin: 0; }
+
+        .table-responsive {
+            background: white;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        
+        th {
+            background-color: #f8f9fa !important;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6c757d;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        td { vertical-align: middle; }
+
+        td input.form-control {
+            border: 1px solid transparent;
+            background: transparent;
+            padding: 2px 5px;
+            font-size: 0.9rem;
+        }
+        
+        td input.form-control:focus {
+            background: white;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+
+        .score-good { color: #27ae60; font-weight: bold; }
+        .score-avg { color: #f39c12; font-weight: bold; }
+        .score-bad { color: #e74c3c; font-weight: bold; }
+        
+        .week-header {
+            background: #e9ecef;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        .week-header:hover { background: #dee2e6; }
+
+        .calc-field { background-color: #eef2f7 !important; font-weight: 600; color: #2c3e50; }
+        .col-header-controls { visibility: hidden; font-size: 0.7rem; margin-left: 5px; cursor: pointer; color: #e74c3c; }
+        th:hover .col-header-controls { visibility: visible; }
+
+        .chart-container { position: relative; height: 300px; width: 100%; }
+
+        /* Modal Styles */
+        .custom-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 2000;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .custom-modal {
+            background: white; padding: 25px; border-radius: 12px;
+            width: 400px; max-width: 90%;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body ng-controller="MainCtrl">
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="px-4 mb-3">
+            <h5 class="fw-bold text-primary"><i class="fas fa-chart-line me-2"></i>TPMS</h5>
+            <small class="text-muted">Trainee Performance</small>
+        </div>
+        
+        <!-- Batch Selection -->
+        <div class="batch-section">
+            <label class="small text-muted fw-bold mb-1">CURRENT BATCH</label>
+            <select class="form-select form-select-sm mb-2 fw-bold text-primary" 
+                    ng-model="activeBatchIndex" 
+                    ng-options="index as batch.name for (index, batch) in batches"
+                    ng-change="switchBatch()">
+            </select>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-primary flex-grow-1" ng-click="createNewBatch()" title="New Batch">
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger flex-grow-1" ng-click="deleteBatch()" title="Delete Batch">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="nav flex-column flex-grow-1">
+            <a class="nav-link" ng-class="{'active': currentView === 'dashboard'}" ng-click="setView('dashboard')">
+                <i class="fas fa-home"></i> Dashboard
+            </a>
+            <a class="nav-link" ng-class="{'active': currentView === 'trainees'}" ng-click="setView('trainees')">
+                <i class="fas fa-users"></i> Trainees
+            </a>
+            <a class="nav-link" ng-class="{'active': currentView === 'weeks'}" ng-click="setView('weeks')">
+                <i class="fas fa-calendar-alt"></i> Weekly Tracker
+            </a>
+        </div>
+
+        <div class="save-section">
+            <div class="d-grid gap-2">
+                <button class="btn btn-success fw-bold" ng-click="openExportModal()">
+                    <i class="fas fa-save me-2"></i> SAVE / EXPORT
+                </button>
+                
+                <hr class="my-2">
+                
+                <label class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-folder-open me-2"></i> Load File
+                    <input type="file" id="upload" hidden onchange="angular.element(this).scope().importData(this)">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        
+        <!-- DASHBOARD VIEW -->
+        <div ng-show="currentView === 'dashboard'">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0">{{ getCurrent().name }} Dashboard</h2>
+                <span class="badge bg-secondary">Batch View</span>
+            </div>
+            
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card stat-card p-3">
+                        <small class="opacity-75">Trainees</small>
+                        <h3>{{ getCurrent().trainees.length }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card p-3 border-start border-4 border-success">
+                        <small class="text-muted">Weeks Tracked</small>
+                        <h3 class="text-dark">{{ getCurrent().weeks.length }}</h3>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="alert alert-info border-0 shadow-sm mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Tip:</strong> You are viewing data for <strong>{{ getCurrent().name }}</strong>. Switch batches in the sidebar.
+                    </div>
+                </div>
+            </div>
+
+            <div class="card p-3 mb-4">
+                <h5 class="card-title mb-3 text-secondary">Performance Matrix</h5>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle table-sm">
+                        <thead>
+                            <tr>
+                                <th>Emp Code</th>
+                                <th>Name</th>
+                                <th ng-repeat="w in getCurrent().weeks" class="text-center">W{{w.weekNumber}}</th>
+                                <th class="text-center bg-light">Overall</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr ng-repeat="t in getCurrent().trainees">
+                                <td>{{ t.empId }}</td>
+                                <td class="fw-bold">{{ t.name }}</td>
+                                <td ng-repeat="w in getCurrent().weeks" class="text-center">
+                                    {{ getTraineeWeekScore(w, t.empId) | number:1 }}
+                                </td>
+                                <td class="text-center fw-bold fs-5">
+                                    <span ng-class="getScoreClass(getOverallScore(t.empId))">
+                                        {{ getOverallScore(t.empId) | number:1 }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card p-3">
+                <h5 class="card-title mb-3 text-secondary">Overall Performance Chart</h5>
+                <div class="chart-container">
+                    <canvas id="overallChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TRAINEES VIEW -->
+        <div ng-show="currentView === 'trainees'">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Trainees ({{ getCurrent().name }})</h2>
+                <div>
+                    <button class="btn btn-outline-secondary me-2" ng-click="addTraineeColumn()">
+                        <i class="fas fa-columns me-1"></i> Add Column
+                    </button>
+                    <button class="btn btn-primary" ng-click="addTrainee()">
+                        <i class="fas fa-plus me-1"></i> Add Trainee
+                    </button>
+                </div>
+            </div>
+
+            <div class="card p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width: 120px;">Emp ID</th>
+                                <th style="width: 200px;">Name</th>
+                                <th ng-repeat="col in getCurrent().config.traineeColumns">
+                                    {{ col }}
+                                    <i class="fas fa-times col-header-controls" ng-click="removeTraineeColumn($index)"></i>
+                                </th>
+                                <th style="width: 50px;"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr ng-repeat="t in getCurrent().trainees">
+                                <td><input type="text" class="form-control" ng-model="t.empId"></td>
+                                <td><input type="text" class="form-control fw-bold" ng-model="t.name"></td>
+                                <td ng-repeat="col in getCurrent().config.traineeColumns">
+                                    <input type="text" class="form-control" ng-model="t.details[col]">
+                                </td>
+                                <td>
+                                    <button class="btn btn-icon btn-outline-danger border-0" ng-click="removeTrainee($index)">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- WEEKS VIEW -->
+        <div ng-show="currentView === 'weeks'">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>Weekly Tracker ({{ getCurrent().name }})</h2>
+                <button class="btn btn-primary" ng-click="addWeek()">
+                    <i class="fas fa-plus me-1"></i> Start New Week
+                </button>
+            </div>
+
+            <div ng-repeat="w in getCurrent().weeks track by $index" class="card mb-4">
+                <div class="week-header" ng-click="w.expanded = !w.expanded">
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-primary me-3">Week {{w.weekNumber}}</span>
+                        <span class="fw-bold">{{ w.startDate | date:'dd MMM' }} - {{ w.endDate | date:'dd MMM yyyy' }}</span>
+                    </div>
+                    <i class="fas" ng-class="w.expanded ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                </div>
+
+                <div class="card-body" ng-show="w.expanded">
+                    <div class="row g-3 mb-4 bg-light p-2 rounded">
+                        <div class="col-md-2">
+                            <label class="form-label small text-muted mb-0">Week No.</label>
+                            <input type="number" class="form-control form-control-sm" ng-model="w.weekNumber">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-0">Start Date</label>
+                            <input type="date" class="form-control form-control-sm" ng-model="w.startDate">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small text-muted mb-0">End Date</label>
+                            <input type="date" class="form-control form-control-sm" ng-model="w.endDate">
+                        </div>
+                        <div class="col-md-4 text-end d-flex align-items-end justify-content-end">
+                            <button class="btn btn-sm btn-outline-danger" ng-click="removeWeek($index)">Delete Week</button>
+                        </div>
+                    </div>
+
+                    <ul class="nav nav-tabs mb-3">
+                        <li class="nav-item"><a class="nav-link" ng-class="{'active': w.currentTab === 'dip'}" ng-click="w.currentTab = 'dip'">Dip Check</a></li>
+                        <li class="nav-item"><a class="nav-link" ng-class="{'active': w.currentTab === 'eval'}" ng-click="w.currentTab = 'eval'">Weekly Evaluation</a></li>
+                    </ul>
+
+                    <!-- Dip Check -->
+                    <div ng-show="w.currentTab === 'dip'">
+                        <div class="d-flex justify-content-end mb-2">
+                            <button class="btn btn-sm btn-outline-primary" ng-click="addDipCheckTopic(w)">Add Topic/Date</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 150px;">Trainee</th>
+                                        <th ng-repeat="topic in w.dipCheckTopics" style="min-width: 120px;">
+                                            <div class="position-relative p-1">
+                                                <input type="text" class="form-control form-control-sm text-center border-0 bg-light fw-bold mb-1" placeholder="Date (DD/MM)" ng-model="topic.date">
+                                                <input type="text" class="form-control form-control-sm text-center border-0 bg-light" placeholder="Topic Name" ng-model="topic.name">
+                                                <i class="fas fa-times position-absolute top-0 end-0 text-danger" style="cursor: pointer; font-size: 0.7rem;" ng-click="removeDipCheckTopic(w, $index)"></i>
+                                            </div>
+                                        </th>
+                                        <th class="bg-light text-center" style="width: 80px;">Avg</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr ng-repeat="t in getCurrent().trainees">
+                                        <td>{{ t.name }}</td>
+                                        <td ng-repeat="topic in w.dipCheckTopics">
+                                            <input type="number" class="form-control text-center" ng-model="w.scores[t.empId].dipCheck[topic.id]" ng-change="calculateDipAverage(w, t.empId)">
+                                        </td>
+                                        <td class="text-center fw-bold bg-light">{{ w.scores[t.empId].dipCheckAvg | number:1 }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Evaluation -->
+                    <div ng-show="w.currentTab === 'eval'">
+                        <div class="d-flex justify-content-end mb-2">
+                            <button class="btn btn-sm btn-outline-secondary" ng-click="addEvalCriterion()">Add Criteria</button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>Trainee</th>
+                                        <th ng-repeat="crit in getCurrent().config.evalCriteria">
+                                            {{ crit }}
+                                            <i class="fas fa-times col-header-controls" ng-click="removeEvalCriterion($index)"></i>
+                                        </th>
+                                        <th class="bg-warning bg-opacity-10">Dip Avg</th>
+                                        <th class="bg-success text-white">Final Score</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr ng-repeat="t in getCurrent().trainees">
+                                        <td class="fw-bold">{{ t.name }}</td>
+                                        <td ng-repeat="crit in getCurrent().config.evalCriteria">
+                                            <input type="number" class="form-control text-center" ng-model="w.scores[t.empId].eval[crit]" ng-change="calculateWeeklyScore(w, t.empId)">
+                                        </td>
+                                        <td class="text-center">{{ w.scores[t.empId].dipCheckAvg | number:1 }}</td>
+                                        <td class="text-center fw-bold calc-field">{{ w.scores[t.empId].finalScore | number:1 }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Selection Modal -->
+    <div class="custom-modal-overlay" ng-show="showExportModal">
+        <div class="custom-modal">
+            <h4 class="mb-3">Select Batches to Export</h4>
+            <div class="mb-3">
+                <div class="form-check mb-2 pb-2 border-bottom">
+                    <input class="form-check-input" type="checkbox" id="selectAll" ng-model="exportConfig.selectAll" ng-change="toggleSelectAll()">
+                    <label class="form-check-label fw-bold" for="selectAll">Select All</label>
+                </div>
+                <div class="form-check" ng-repeat="b in batches">
+                    <input class="form-check-input" type="checkbox" ng-model="exportConfig.selected[b.id]">
+                    <label class="form-check-label">{{ b.name }}</label>
+                </div>
+            </div>
+            <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-secondary" ng-click="showExportModal = false">Cancel</button>
+                <button class="btn btn-success" ng-click="confirmExport()">Export Excel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var app = angular.module('tpmsApp', []);
+
+        app.controller('MainCtrl', function($scope, $timeout) {
+            $scope.currentView = 'dashboard';
+            
+            // --- BATCH MANAGEMENT ---
+            $scope.batches = [
+                {
+                    id: 'b1', name: 'Batch 1', 
+                    trainees: [], weeks: [],
+                    config: { traineeColumns: ['Email', 'Team', 'Trainer'], evalCriteria: ['Logic', 'Accuracy', 'Code Quality'] }
+                }
+            ];
+            $scope.activeBatchIndex = 0;
+            
+            $scope.getCurrent = function() {
+                return $scope.batches[$scope.activeBatchIndex];
+            };
+
+            $scope.createNewBatch = function() {
+                var name = prompt("Enter Batch Name:");
+                if(name) {
+                    $scope.batches.push({
+                        id: 'b' + Date.now(),
+                        name: name,
+                        trainees: [],
+                        weeks: [],
+                        config: { traineeColumns: ['Email', 'Team', 'Trainer'], evalCriteria: ['Logic', 'Accuracy', 'Code Quality'] }
+                    });
+                    $scope.activeBatchIndex = $scope.batches.length - 1;
+                    $scope.updateChart();
+                }
+            };
+
+            $scope.deleteBatch = function() {
+                if($scope.batches.length <= 1) {
+                    alert("Cannot delete the only batch.");
+                    return;
+                }
+                if(confirm("Delete " + $scope.getCurrent().name + "? This cannot be undone.")) {
+                    $scope.batches.splice($scope.activeBatchIndex, 1);
+                    $scope.activeBatchIndex = 0;
+                    $scope.updateChart();
+                }
+            };
+
+            $scope.switchBatch = function() {
+                $scope.updateChart();
+            };
+
+            // --- NAVIGATION & UI ---
+            $scope.setView = function(v) {
+                $scope.currentView = v;
+                if(v === 'dashboard') $timeout($scope.renderChart, 100);
+            };
+
+            // --- TRAINEE LOGIC ---
+            $scope.addTrainee = function() {
+                var batch = $scope.getCurrent();
+                var newT = { empId: 'ID-' + Math.floor(1000 + Math.random()*9000), name: 'New Trainee', details: {} };
+                batch.config.traineeColumns.forEach(c => newT.details[c] = '');
+                batch.trainees.push(newT);
+                batch.weeks.forEach(w => $scope.initTraineeScore(w, newT.empId, batch));
+                $scope.updateChart();
+            };
+            $scope.init = function() {
+                 $timeout($scope.renderChart, 500);
+            };
+
+            $scope.removeTrainee = (idx) => { 
+                if(confirm('Remove trainee?')) {
+                    $scope.getCurrent().trainees.splice(idx, 1);
+                    $scope.updateChart();
+                }
+            };
+
+            $scope.addTraineeColumn = () => {
+                var n = prompt("Column Name:");
+                if(n) $scope.getCurrent().config.traineeColumns.push(n);
+            };
+
+            $scope.removeTraineeColumn = (idx) => $scope.getCurrent().config.traineeColumns.splice(idx, 1);
+
+            $scope.initTraineeScore = (w, id, batch) => {
+                if(!w.scores[id]) {
+                    w.scores[id] = { dipCheck: {}, dipCheckAvg: 0, eval: {}, finalScore: 0 };
+                    batch.config.evalCriteria.forEach(c => w.scores[id].eval[c] = 0);
+                }
+            };
+
+            // --- WEEK LOGIC ---
+            $scope.addWeek = function() {
+                var batch = $scope.getCurrent();
+                var w = {
+                    weekNumber: batch.weeks.length + 1,
+                    startDate: new Date(), endDate: new Date(),
+                    expanded: true, currentTab: 'dip',
+                    dipCheckTopics: [{id: 1, date: '13/01', name: 'Java Basics'}],
+                    scores: {}
+                };
+                batch.trainees.forEach(t => $scope.initTraineeScore(w, t.empId, batch));
+                batch.weeks.push(w);
+                $scope.updateChart();
+            };
+
+            $scope.removeWeek = (idx) => {
+                $scope.getCurrent().weeks.splice(idx, 1);
+                $scope.updateChart();
+            };
+
+            $scope.addDipCheckTopic = (w) => w.dipCheckTopics.push({id: Date.now(), date: 'DD/MM', name: 'Topic'});
+            $scope.removeDipCheckTopic = (w, idx) => w.dipCheckTopics.splice(idx, 1);
+
+            $scope.addEvalCriterion = () => {
+                var n = prompt("Criteria Name:");
+                if(n) {
+                    var batch = $scope.getCurrent();
+                    batch.config.evalCriteria.push(n);
+                    batch.weeks.forEach(w => batch.trainees.forEach(t => w.scores[t.empId].eval[n] = 0));
+                }
+            };
+
+            $scope.removeEvalCriterion = (idx) => $scope.getCurrent().config.evalCriteria.splice(idx, 1);
+
+            // --- CALCULATIONS ---
+            $scope.calculateDipAverage = function(w, id) {
+                var s = w.scores[id].dipCheck, t = 0, c = 0;
+                w.dipCheckTopics.forEach(top => {
+                    var v = parseFloat(s[top.id]);
+                    if(!isNaN(v)) { t += v; c++; }
+                });
+                w.scores[id].dipCheckAvg = c > 0 ? (t / c) : 0;
+                $scope.calculateWeeklyScore(w, id);
+            };
+
+            $scope.calculateWeeklyScore = function(w, id) {
+                var batch = $scope.getCurrent();
+                var s = w.scores[id], t = 0, c = 0;
+                batch.config.evalCriteria.forEach(cr => {
+                    var v = parseFloat(s.eval[cr]);
+                    if(!isNaN(v)) { t += v; c++; }
+                });
+                t += s.dipCheckAvg; c++;
+                s.finalScore = c > 0 ? (t / c) : 0;
+                $scope.updateChart();
+            };
+
+            $scope.getTraineeWeekScore = (w, id) => w.scores[id] ? w.scores[id].finalScore : 0;
+
+            $scope.getOverallScore = function(id) {
+                var t = 0, c = 0;
+                $scope.getCurrent().weeks.forEach(w => { if(w.scores[id]) { t += w.scores[id].finalScore; c++; } });
+                return c > 0 ? (t / c) : 0;
+            };
+
+            $scope.getScoreClass = (s) => s >= 7 ? 'score-good' : (s >= 5 ? 'score-avg' : 'score-bad');
+
+            // --- CHART ---
+            var overallChart;
+            $scope.renderChart = function() {
+                var ctx = document.getElementById('overallChart');
+                if(!ctx) return;
+                if(overallChart) overallChart.destroy();
+                overallChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [{ label: 'Overall Score', data: [], backgroundColor: '#3498db', borderColor: '#2980b9', borderWidth: 1 }] },
+                    options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0, max: 10 } } }
+                });
+                $scope.updateChart();
+            };
+
+            $scope.updateChart = function() {
+                if(!overallChart) return;
+                var batch = $scope.getCurrent();
+                var labels = batch.trainees.map(t => t.name);
+                var data = batch.trainees.map(t => $scope.getOverallScore(t.empId));
+                overallChart.data.labels = labels;
+                overallChart.data.datasets[0].data = data;
+                overallChart.update();
+            };
+
+            // --- EXPORT MODAL LOGIC ---
+            $scope.showExportModal = false;
+            $scope.exportConfig = { selectAll: true, selected: {} };
+
+            $scope.openExportModal = function() {
+                $scope.exportConfig.selectAll = true;
+                $scope.toggleSelectAll();
+                $scope.showExportModal = true;
+            };
+
+            $scope.toggleSelectAll = function() {
+                $scope.batches.forEach(b => {
+                    $scope.exportConfig.selected[b.id] = $scope.exportConfig.selectAll;
+                });
+            };
+
+            $scope.confirmExport = function() {
+                var selectedBatches = $scope.batches.filter(b => $scope.exportConfig.selected[b.id]);
+                if(selectedBatches.length === 0) {
+                    alert("Please select at least one batch.");
+                    return;
+                }
+                $scope.exportData(selectedBatches);
+                $scope.showExportModal = false;
+            };
+
+            // --- EXPORT LOGIC (MULTI-BATCH) ---
+            $scope.exportData = function(batchesToExport) {
+                var wb = XLSX.utils.book_new();
+
+                // 1. Save Full App State (Hidden)
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[JSON.stringify($scope.batches)]]), "_APP_DATA");
+
+                // 2. Trainees Details (Stacked)
+                var allTraineeRows = [];
+                batchesToExport.forEach(b => {
+                    b.trainees.forEach(t => {
+                        var row = { 'Batch': b.name, 'Emp ID': t.empId, 'Name': t.name };
+                        b.config.traineeColumns.forEach(c => row[c] = t.details[c]);
+                        allTraineeRows.push(row);
+                    });
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allTraineeRows), "Trainees details");
+
+                // 3. Dip Check (Stacked Tables)
+                var dipSheetData = [];
+                batchesToExport.forEach(b => {
+                    // Batch Header row
+                    dipSheetData.push({});
+                    dipSheetData.push({ 'Batch': 'BATCH: ' + b.name }); // Marker row
+                    
+                    b.weeks.forEach(w => {
+                        dipSheetData.push({ 'Batch': 'Week ' + w.weekNumber });
+                        var headerRow = { 'Batch': '', 'Emp Code': '', 'Name': '' };
+                        w.dipCheckTopics.forEach(top => headerRow[top.date + ' ' + top.name] = '');
+                        headerRow['Performance'] = '';
+                        dipSheetData.push(headerRow);
+
+                        b.trainees.forEach(t => {
+                            var row = { 'Batch': '', 'Emp Code': t.empId, 'Name': t.name };
+                            w.dipCheckTopics.forEach(top => {
+                                row[top.date + ' ' + top.name] = w.scores[t.empId].dipCheck[top.id] || 0;
+                            });
+                            row['Performance'] = w.scores[t.empId].dipCheckAvg;
+                            dipSheetData.push(row);
+                        });
+                        dipSheetData.push({}); 
+                    });
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dipSheetData), "Dip Check");
+
+                // 4. Weekly Marking (Stacked)
+                var markRows = [];
+                batchesToExport.forEach(b => {
+                    b.weeks.forEach(w => {
+                        b.trainees.forEach(t => {
+                            var row = { 'Batch': b.name, 'Week': 'W' + w.weekNumber, 'Emp Code': t.empId, 'Name': t.name };
+                            b.config.evalCriteria.forEach(c => row[c] = w.scores[t.empId].eval[c] || 0);
+                            row['QNA / Viva'] = w.scores[t.empId].dipCheckAvg;
+                            row['Final Performance'] = w.scores[t.empId].finalScore;
+                            markRows.push(row);
+                        });
+                    });
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(markRows), "Weekly marking");
+
+                // 5. Performance Matrix
+                var summaryRows = [];
+                batchesToExport.forEach(b => {
+                    b.trainees.forEach(t => {
+                        var row = { 'Batch': b.name, 'Emp Code': t.empId, 'Name': t.name };
+                        b.weeks.forEach(w => {
+                            // Helper to get score for this batch's context
+                            var score = w.scores[t.empId] ? w.scores[t.empId].finalScore : 0;
+                            row['Week ' + w.weekNumber] = score;
+                        });
+                        // Calculate overall for this specific batch loop
+                        var total = 0, c = 0;
+                        b.weeks.forEach(w => { if(w.scores[t.empId]) { total += w.scores[t.empId].finalScore; c++; } });
+                        row['Overall'] = c > 0 ? (total / c) : 0;
+                        summaryRows.push(row);
+                    });
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryRows), "All Weeks Performance");
+
+                XLSX.writeFile(wb, "TPMS_Data.xlsx");
+            };
+
+            // --- IMPORT ---
+            $scope.importData = function(el) {
+                var reader = new FileReader();
+                reader.onload = (e) => {
+                    var wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+                    var raw = wb.Sheets["_APP_DATA"] ? wb.Sheets["_APP_DATA"]['A1'].v : null;
+                    if(raw) {
+                        var importedBatches = JSON.parse(raw);
+                        $scope.$apply(() => {
+                            // Restore Dates
+                            importedBatches.forEach(b => {
+                                b.weeks.forEach(w => {
+                                    w.startDate = new Date(w.startDate);
+                                    w.endDate = new Date(w.endDate);
+                                });
+                            });
+                            $scope.batches = importedBatches;
+                            $scope.activeBatchIndex = 0;
+                            $scope.updateChart();
+                        });
+                    } else {
+                        alert("Could not find app data.");
+                    }
+                };
+                reader.readAsArrayBuffer(el.files[0]);
+            };
+
+            $scope.init();
+        });
+    </script>
+</body>
+</html>
