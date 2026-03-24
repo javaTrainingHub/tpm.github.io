@@ -253,10 +253,10 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr ng-repeat="t in getCurrent().trainees">
+                            <tr ng-repeat="t in getSortedTrainees()">
                                 <td>{{ t.empId }}</td>
                                 <td class="fw-bold">{{ t.name }}</td>
-                                <td ng-repeat="w in getCurrent().weeks" class="text-center">
+                                <td ng-repeat="w in getCurrent().weeks " class="text-center">
                                     {{ getTraineeWeekScore(w, t.empId) | number:1 }}
                                 </td>
                                 <td class="text-center fw-bold fs-5">
@@ -474,6 +474,7 @@
             $scope.activeBatchIndex = 0;
             
             $scope.getCurrent = function() {
+                console.log($scope.batches[$scope.activeBatchIndex]);
                 return $scope.batches[$scope.activeBatchIndex];
             };
 
@@ -611,6 +612,11 @@
                 var t = 0, c = 0;
                 $scope.getCurrent().weeks.forEach(w => { if(w.scores[id]) { t += w.scores[id].finalScore; c++; } });
                 return c > 0 ? (t / c) : 0;
+            };
+            $scope.getSortedTrainees = function () {
+                return $scope.getCurrent().trainees.slice().sort(function (a, b) {
+                    return $scope.getOverallScore(b.empId) - $scope.getOverallScore(a.empId);
+                });
             };
 
             $scope.getScoreClass = (s) => s >= 7 ? 'score-good' : (s >= 5 ? 'score-avg' : 'score-bad');
